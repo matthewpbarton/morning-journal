@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gratitude Journal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Patrick Hand', cursive;
+            background-color: #fafafa;
+            color: #333;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .date {
+            text-align: center;
+            font-size: 18px;
+            color: #888;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 42px;
+            margin-bottom: 30px;
+            color: #222;
+            font-weight: normal;
+        }
+
+        .quote-section {
+            text-align: center;
+            margin-bottom: 50px;
+            padding: 30px;
+            background-color: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .quote-text {
+            font-size: 20px;
+            font-style: italic;
+            color: #555;
+            line-height: 1.8;
+            margin-bottom: 15px;
+        }
+
+        .quote-text::before {
+            content: '"';
+            font-size: 30px;
+            color: #ccc;
+            margin-right: 5px;
+        }
+
+        .quote-text::after {
+            content: '"';
+            font-size: 30px;
+            color: #ccc;
+            margin-left: 5px;
+        }
+
+        .quote-author {
+            font-size: 16px;
+            color: #999;
+            font-style: normal;
+        }
+
+        .quote-author::before {
+            content: '— ';
+        }
+
+        .section {
+            background-color: #fff;
+            padding: 40px;
+            margin-bottom: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .morning {
+            background-color: #fff5ee;
+        }
+
+        .evening {
+            background-color: #f5f5f5;
+        }
+
+        .section h2 {
+            font-size: 24px;
+            margin-bottom: 30px;
+            color: #555;
+            font-weight: normal;
+        }
+
+        .prompt {
+            margin-bottom: 30px;
+        }
+
+        .prompt-label {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .input-wrapper {
+            position: relative;
+            margin-bottom: 8px;
+        }
+
+        .number-label {
+            position: absolute;
+            left: 0;
+            top: 8px;
+            color: #999;
+            font-size: 16px;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        textarea {
+            width: 100%;
+            border: none;
+            border-bottom: 1px solid #ddd;
+            background: transparent;
+            font-family: 'Patrick Hand', cursive;
+            font-size: 16px;
+            padding: 8px 0 8px 25px;
+            margin-bottom: 0;
+            resize: none;
+            outline: none;
+            color: #333;
+        }
+
+        textarea:focus {
+            border-bottom: 1px solid #999;
+        }
+
+        .no-number {
+            padding-left: 0 !important;
+        }
+
+        .save-btn {
+            display: block;
+            margin: 40px auto;
+            padding: 12px 30px;
+            background-color: #333;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Patrick Hand', cursive;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .save-btn:hover {
+            background-color: #555;
+        }
+
+        .history {
+            margin-top: 60px;
+            padding-top: 40px;
+            border-top: 2px solid #eee;
+        }
+
+        .history h2 {
+            font-size: 28px;
+            margin-bottom: 30px;
+            color: #555;
+            font-weight: normal;
+            text-align: center;
+        }
+
+        .history-entry {
+            background-color: #fff;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        .history-date {
+            font-size: 16px;
+            color: #888;
+            margin-bottom: 15px;
+        }
+
+        .history-section {
+            margin-bottom: 15px;
+        }
+
+        .history-section-title {
+            font-size: 14px;
+            color: #999;
+            margin-bottom: 5px;
+        }
+
+        .history-section-content {
+            font-size: 15px;
+            color: #555;
+            line-height: 1.5;
+        }
+
+        .delete-btn {
+            background: none;
+            border: none;
+            color: #ccc;
+            cursor: pointer;
+            font-family: 'Patrick Hand', cursive;
+            font-size: 14px;
+            float: right;
+            padding: 0;
+        }
+
+        .delete-btn:hover {
+            color: #999;
+        }
+
+        .current-entry {
+            border: 2px solid #ffd700;
+            background-color: #fffef5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="date" id="currentDate"></div>
+        <h1>Gratitude Journal</h1>
+
+        <div class="quote-section" id="quoteSection">
+            <div class="quote-text" id="quoteText">Loading...</div>
+            <div class="quote-author" id="quoteAuthor"></div>
+        </div>
+
+        <div class="section morning">
+            <h2>Morning</h2>
+            
+            <div class="prompt">
+                <label class="prompt-label">What am I grateful for today?</label>
+                <div class="input-wrapper">
+                    <span class="number-label">1.</span>
+                    <textarea id="grateful1" rows="1"></textarea>
+                </div>
+                <div class="input-wrapper">
+                    <span class="number-label">2.</span>
+                    <textarea id="grateful2" rows="1"></textarea>
+                </div>
+                <div class="input-wrapper">
+                    <span class="number-label">3.</span>
+                    <textarea id="grateful3" rows="1"></textarea>
+                </div>
+            </div>
+
+            <div class="prompt">
+                <label class="prompt-label">What would make today great?</label>
+                <div class="input-wrapper">
+                    <span class="number-label">1.</span>
+                    <textarea id="great1" rows="1"></textarea>
+                </div>
+                <div class="input-wrapper">
+                    <span class="number-label">2.</span>
+                    <textarea id="great2" rows="1"></textarea>
+                </div>
+                <div class="input-wrapper">
+                    <span class="number-label">3.</span>
+                    <textarea id="great3" rows="1"></textarea>
+                </div>
+            </div>
+
+            <div class="prompt">
+                <label class="prompt-label">Daily affirmations, I am...</label>
+                <textarea id="affirmations" rows="1" class="no-number"></textarea>
+            </div>
+        </div>
+
+        <div class="section evening">
+            <h2>Evening</h2>
+            
+            <div class="prompt">
+                <label class="prompt-label">Three amazing things that happened today</label>
+                <div class="input-wrapper">
+                    <span class="number-label">1.</span>
+                    <textarea id="amazing1" rows="1"></textarea>
+                </div>
+                <div class="input-wrapper">
+                    <span class="number-label">2.</span>
+                    <textarea id="amazing2" rows="1"></textarea>
+                </div>
+                <div class="input-wrapper">
+                    <span class="number-label">3.</span>
+                    <textarea id="amazing3" rows="1"></textarea>
+                </div>
+            </div>
+
+            <div class="prompt">
+                <label class="prompt-label">How could I have made today better?</label>
+                <textarea id="better" rows="1" class="no-number"></textarea>
+            </div>
+        </div>
+
+        <button class="save-btn" onclick="downloadEntry()">Save Today's Entry</button>
+
+        <div class="history">
+            <h2>Saved Entries</h2>
+            <div id="historyList"></div>
+        </div>
+    </div>
+
+    <script>
+        // Quote repository - 50 quotes
+        const QUOTES = [
+            { text: "Gratitude turns what we have into enough.", author: "Aesop" },
+            { text: "When I started counting my blessings, my whole life turned around.", author: "Willie Nelson" },
+            { text: "The more you practice gratitude, the more you see how much there is to be grateful for.", author: "Oprah Winfrey" },
+            { text: "Enjoy the little things, for one day you may look back and realize they were the big things.", author: "Robert Brault" },
+            { text: "Gratitude is not only the greatest of virtues but the parent of all others.", author: "Cicero" },
+            { text: "He is a wise man who does not grieve for the things which he has not, but rejoices for those which he has.", author: "Epictetus" },
+            { text: "Happiness is not something ready made. It comes from your own actions.", author: "Dalai Lama" },
+            { text: "Do not spoil what you have by desiring what you have not.", author: "Epicurus" },
+            { text: "Happiness depends upon ourselves.", author: "Aristotle" },
+            { text: "It is not what we have, but what we enjoy, that constitutes our abundance.", author: "Epicurus" },
+            { text: "Look deep into nature, and then you will understand everything better.", author: "Albert Einstein" },
+            { text: "The important thing is not to stop questioning. Curiosity has its own reason for existing.", author: "Albert Einstein" },
+            { text: "Science is a way of thinking much more than it is a body of knowledge.", author: "Carl Sagan" },
+            { text: "Somewhere, something incredible is waiting to be known.", author: "Carl Sagan" },
+            { text: "Research is what I'm doing when I don't know what I'm doing.", author: "Wernher von Braun" },
+            { text: "Hard work beats talent when talent doesn't work hard.", author: "Tim Notke" },
+            { text: "You miss 100% of the shots you don't take.", author: "Wayne Gretzky" },
+            { text: "Champions keep playing until they get it right.", author: "Billie Jean King" },
+            { text: "It's not whether you get knocked down; it's whether you get up.", author: "Vince Lombardi" },
+            { text: "Do not let what you cannot do interfere with what you can do.", author: "John Wooden" },
+            { text: "The person who reads too much and uses his brain too little will fall into lazy habits of thinking.", author: "Albert Einstein" },
+            { text: "If you're always trying to be normal, you will never know how amazing you can be.", author: "Maya Angelou" },
+            { text: "The reasonable man adapts himself to the world; the unreasonable one persists in trying to adapt the world to himself.", author: "George Bernard Shaw" },
+            { text: "Do what you can, with what you have, where you are.", author: "Theodore Roosevelt" },
+            { text: "Don't be satisfied with stories, how things have gone with others. Unfold your own myth.", author: "Rumi" },
+            { text: "We are what we repeatedly do. Excellence, then, is not an act, but a habit.", author: "Aristotle" },
+            { text: "Whether you think you can or you think you can't, you're right.", author: "Henry Ford" },
+            { text: "Life isn't about waiting for the storm to pass, it's about learning to dance in the rain.", author: "Vivian Greene" },
+            { text: "It's not the load that breaks you down, it's the way you carry it.", author: "Lou Holtz" },
+            { text: "The only limit to our realization of tomorrow is our doubts of today.", author: "Franklin D. Roosevelt" },
+            { text: "Creativity is intelligence having fun.", author: "Albert Einstein" },
+            { text: "The best way to predict the future is to invent it.", author: "Alan Kay" },
+            { text: "You can't use up creativity. The more you use, the more you have.", author: "Maya Angelou" },
+            { text: "Originality is simply a pair of fresh eyes.", author: "Thomas W. Higginson" },
+            { text: "Don't think outside the box. Think like there is no box.", author: "Unknown" },
+            { text: "Fall seven times and stand up eight.", author: "Japanese Proverb" },
+            { text: "Strength does not come from physical capacity. It comes from an indomitable will.", author: "Mahatma Gandhi" },
+            { text: "In the middle of every difficulty lies opportunity.", author: "Albert Einstein" },
+            { text: "What lies behind us and what lies before us are tiny matters compared to what lies within us.", author: "Ralph Waldo Emerson" },
+            { text: "The comeback is always stronger than the setback.", author: "Unknown" },
+            { text: "Happiness is not something you postpone for the future; it is something you design for the present.", author: "Jim Rohn" },
+            { text: "For every minute you are angry you lose sixty seconds of happiness.", author: "Ralph Waldo Emerson" },
+            { text: "Happiness is a state of activity.", author: "Aristotle" },
+            { text: "The purpose of our lives is to be happy.", author: "Dalai Lama" },
+            { text: "Happiness is when what you think, what you say, and what you do are in harmony.", author: "Mahatma Gandhi" },
+            { text: "Action is the foundational key to all success.", author: "Pablo Picasso" },
+            { text: "Small daily improvements over time lead to stunning results.", author: "Robin Sharma" },
+            { text: "Don't watch the clock; do what it does. Keep going.", author: "Sam Levenson" },
+            { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
+            { text: "Everything you've ever wanted is on the other side of fear.", author: "George Addair" }
+        ];
+
+        const fields = [
+            'grateful1', 'grateful2', 'grateful3',
+            'great1', 'great2', 'great3',
+            'affirmations',
+            'amazing1', 'amazing2', 'amazing3',
+            'better'
+        ];
+
+        function getTodayKey() {
+            const today = new Date();
+            return today.toISOString().split('T')[0];
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr + 'T00:00:00');
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            return date.toLocaleDateString('en-US', options);
+        }
+
+        function displayCurrentDate() {
+            document.getElementById('currentDate').textContent = formatDate(getTodayKey());
+        }
+
+        function loadDailyQuote() {
+            try {
+                const todayKey = getTodayKey();
+                const cachedQuote = localStorage.getItem(`quote_${todayKey}`);
+                
+                if (cachedQuote) {
+                    const quote = JSON.parse(cachedQuote);
+                    displayQuote(quote);
+                } else {
+                    const randomIndex = Math.floor(Math.random() * QUOTES.length);
+                    const quote = QUOTES[randomIndex];
+                    localStorage.setItem(`quote_${todayKey}`, JSON.stringify(quote));
+                    displayQuote(quote);
+                }
+            } catch (error) {
+                console.error('Error loading quote:', error);
+                displayQuote({ text: "Gratitude turns what we have into enough.", author: "Aesop" });
+            }
+        }
+
+        function displayQuote(quote) {
+            const quoteTextEl = document.getElementById('quoteText');
+            const quoteAuthorEl = document.getElementById('quoteAuthor');
+            
+            if (quoteTextEl && quoteAuthorEl) {
+                quoteTextEl.textContent = quote.text;
+                quoteAuthorEl.textContent = quote.author;
+            }
+        }
+
+        function saveEntry() {
+            const todayKey = getTodayKey();
+            const entry = {};
+            
+            fields.forEach(field => {
+                const element = document.getElementById(field);
+                if (element) {
+                    entry[field] = element.value;
+                }
+            });
+
+            localStorage.setItem(`journal_${todayKey}`, JSON.stringify(entry));
+        }
+
+        function loadTodayEntry() {
+            const todayKey = getTodayKey();
+            const saved = localStorage.getItem(`journal_${todayKey}`);
+            
+            if (saved) {
+                const entry = JSON.parse(saved);
+                fields.forEach(field => {
+                    const element = document.getElementById(field);
+                    if (element && entry[field]) {
+                        element.value = entry[field];
+                    }
+                });
+            }
+        }
+
+        function loadHistory() {
+            const historyList = document.getElementById('historyList');
+            const entries = [];
+            
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key.startsWith('journal_')) {
+                    const date = key.replace('journal_', '');
+                    const data = JSON.parse(localStorage.getItem(key));
+                    entries.push({ date, data });
+                }
+            }
+
+            entries.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const todayKey = getTodayKey();
+
+            historyList.innerHTML = '';
+            
+            if (entries.length === 0) {
+                historyList.innerHTML = '<p style="text-align: center; color: #999;">No saved entries yet</p>';
+                return;
+            }
+            
+            entries.forEach(entry => {
+                const entryDiv = document.createElement('div');
+                entryDiv.className = 'history-entry';
+                
+                if (entry.date === todayKey) {
+                    entryDiv.classList.add('current-entry');
+                }
+                
+                let content = `
+                    <button class="delete-btn" onclick="deleteEntry('${entry.date}')">Delete</button>
+                    <div class="history-date">${formatDate(entry.date)}${entry.date === todayKey ? ' (Today)' : ''}</div>
+                `;
+
+                if (entry.data.grateful1 || entry.data.grateful2 || entry.data.grateful3) {
+                    content += `
+                        <div class="history-section">
+                            <div class="history-section-title">Grateful for:</div>
+                            <div class="history-section-content">
+                                ${[entry.data.grateful1, entry.data.grateful2, entry.data.grateful3].filter(x => x).join(' • ')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (entry.data.great1 || entry.data.great2 || entry.data.great3) {
+                    content += `
+                        <div class="history-section">
+                            <div class="history-section-title">What would make today great:</div>
+                            <div class="history-section-content">
+                                ${[entry.data.great1, entry.data.great2, entry.data.great3].filter(x => x).join(' • ')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (entry.data.affirmations) {
+                    content += `
+                        <div class="history-section">
+                            <div class="history-section-title">Daily affirmations, I am...</div>
+                            <div class="history-section-content">${entry.data.affirmations}</div>
+                        </div>
+                    `;
+                }
+
+                if (entry.data.amazing1 || entry.data.amazing2 || entry.data.amazing3) {
+                    content += `
+                        <div class="history-section">
+                            <div class="history-section-title">Amazing things:</div>
+                            <div class="history-section-content">
+                                ${[entry.data.amazing1, entry.data.amazing2, entry.data.amazing3].filter(x => x).join(' • ')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (entry.data.better) {
+                    content += `
+                        <div class="history-section">
+                            <div class="history-section-title">How to make it better:</div>
+                            <div class="history-section-content">${entry.data.better}</div>
+                        </div>
+                    `;
+                }
+
+                entryDiv.innerHTML = content;
+                historyList.appendChild(entryDiv);
+            });
+        }
+
+        function deleteEntry(date) {
+            if (confirm('Delete this entry?')) {
+                localStorage.removeItem(`journal_${date}`);
+                loadHistory();
+            }
+        }
+
+        function downloadEntry() {
+            const todayKey = getTodayKey();
+            const saved = localStorage.getItem(`journal_${todayKey}`);
+            
+            if (!saved) {
+                alert('No entry for today to save!');
+                return;
+            }
+
+            const entry = JSON.parse(saved);
+            
+            let content = `Gratitude Journal - ${formatDate(todayKey)}\n`;
+            content += `${'='.repeat(50)}\n\n`;
+            
+            content += `MORNING\n`;
+            content += `${'─'.repeat(50)}\n\n`;
+            
+            content += `What am I grateful for today?\n`;
+            if (entry.grateful1) content += `1. ${entry.grateful1}\n`;
+            if (entry.grateful2) content += `2. ${entry.grateful2}\n`;
+            if (entry.grateful3) content += `3. ${entry.grateful3}\n`;
+            content += `\n`;
+            
+            content += `What would make today great?\n`;
+            if (entry.great1) content += `1. ${entry.great1}\n`;
+            if (entry.great2) content += `2. ${entry.great2}\n`;
+            if (entry.great3) content += `3. ${entry.great3}\n`;
+            content += `\n`;
+            
+            content += `Daily affirmations, I am...\n`;
+            if (entry.affirmations) content += `${entry.affirmations}\n`;
+            content += `\n`;
+            
+            content += `EVENING\n`;
+            content += `${'─'.repeat(50)}\n\n`;
+            
+            content += `Three amazing things that happened today\n`;
+            if (entry.amazing1) content += `1. ${entry.amazing1}\n`;
+            if (entry.amazing2) content += `2. ${entry.amazing2}\n`;
+            if (entry.amazing3) content += `3. ${entry.amazing3}\n`;
+            content += `\n`;
+            
+            content += `How could I have made today better?\n`;
+            if (entry.better) content += `${entry.better}\n`;
+
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `GratitudeJournalEntries/gratitude-journal-${todayKey}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            loadHistory();
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            displayCurrentDate();
+            loadDailyQuote();
+            loadTodayEntry();
+            loadHistory();
+            
+            fields.forEach(field => {
+                const element = document.getElementById(field);
+                if (element) {
+                    element.addEventListener('input', saveEntry);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
