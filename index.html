@@ -177,6 +177,7 @@
             justify-content: center;
             gap: 15px;
             margin: 40px auto;
+            flex-wrap: wrap;
         }
 
         .save-btn {
@@ -393,8 +394,9 @@
 
         // --- STATE ---
         let currentUID = null;
+        let firebaseAvailable = false;
 
-        // --- DOM REFS ---
+        // --- DOM ---
         const statusBar = document.getElementById('statusBar');
         const saveBtn = document.getElementById('saveBtn');
         const downloadBtn = document.getElementById('downloadBtn');
@@ -454,7 +456,6 @@
             { text: "Everything you've ever wanted is on the other side of fear.", author: "George Addair" }
         ];
 
-        // --- FIELD IDS ---
         const fields = [
             'grateful1', 'grateful2', 'grateful3',
             'great1', 'great2', 'great3',
@@ -504,11 +505,10 @@
         // --- DATE ---
         document.getElementById('currentDate').textContent = formatDate(getTodayKey());
 
-        // --- QUOTE ---
+        // --- QUOTE (no Firebase dependency) ---
         function loadDailyQuote() {
             const todayKey = getTodayKey();
             const cached = localStorage.getItem(`quote_${todayKey}`);
-
             if (cached) {
                 displayQuote(JSON.parse(cached));
             } else {
@@ -523,43 +523,66 @@
             document.getElementById('quoteAuthor').textContent = quote.author;
         }
 
-        // Load quote immediately — no Firebase dependency
         loadDailyQuote();
 
-        // --- LOAD TODAY FROM FIREBASE ---
-        async function loadTodayEntry() {
-            if (!currentUID) return;
-
-            const todayKey = getTodayKey();
-            setStatus('Loading your entry...', 'saving');
-
-            try {
-                const snap = await getDoc(doc(db, "users", currentUID, "journals", todayKey));
-                if (snap.exists()) {
-                    populateFields(snap.data());
-                    setStatus('Entry loaded.', 'saved');
-                } else {
-                    clearFields();
-                    setStatus('Start your journal for today.', '');
-                }
-            } catch (e) {
-                console.error("Load error:", e);
-                setStatus('Could not load entry. Try refreshing.', 'error');
-            }
+        // --- localStorage FUNCTIONS (fallback) ---
+        function localSaveEntry(dateKey, entry) {
+            localStorage.setItem(`journal_${dateKey}`, JSON.stringify(entry));
         }
 
-        // --- SAVE TO FIREBASE ---
-        async function saveEntry() {
-            if (!currentUID) {
-                setStatus('Not connected. Please refresh.', 'error');
-                return;
-            }
+        function localLoadEntry(dateKey) {
+            const saved = localStorage.getItem(`journal_${dateKey}`);
+            return saved ? JSON.parse(saved) : null;
+        }
 
+        function localLoadAllEntries() {
+            const entries = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key.startsWith('journal_')) {
+                    entries.push({
+                        date: key.replace('journal_', ''),
+                        data: JSON.parse(localStorage.getItem(key))
+                    });
+                }
+            }
+            return entries;
+        }
+
+        function localDeleteEntry(dateKey) {
+            localStorage.removeItem(`journal_${dateKey}`);
+        }
+
+        // --- FIREBASE FUNCTIONS ---
+        async function firebaseSaveEntry(dateKey, entry) {
+            await setDoc(doc(db, "users", currentUID, "journals", dateKey), {
+                ...entry,
+                lastUpdated: serverTimestamp()
+            });
+        }
+
+        async function firebaseLoadEntry(dateKey) {
+            const snap = await getDoc(doc(db, "users", currentUID, "journals", dateKey));
+            return snap.exists() ? snap.data() : null;
+        }
+
+        async function firebaseLoadAllEntries() {
+            const snapshot = await getDocs(collection(db, "users", currentUID, "journals"));
+            const entries = [];
+            snapshot.forEach(d => entries.push({ date: d.id, data: d.data() }));
+            return entries;
+        }
+
+        async function firebaseDeleteEntry(dateKey) {
+            await deleteDoc(doc(db, "users", currentUID, "journals", dateKey));
+        }
+
+        // --- UNIFIED SAVE ---
+        async function saveEntry() {
             const todayKey = getTodayKey();
             const entry = getEntryFromFields();
-
-            // Block save if all fields empty
             const hasContent = Object.values(entry).some(v => v.trim() !== '');
+
             if (!hasContent) {
                 setStatus('Nothing to save — write something first!', 'error');
                 return;
@@ -568,176 +591,63 @@
             saveBtn.disabled = true;
             setStatus('Saving...', 'saving');
 
-            try {
-                await setDoc(doc(db, "users", currentUID, "journals", todayKey), {
-                    ...entry,
-                    lastUpdated: serverTimestamp()
-                });
+            // Always save to localStorage
+            localSaveEntry(todayKey, entry);
 
-                setStatus('Saved successfully!', 'saved');
-                await loadHistory();
-            } catch (e) {
-                console.error("Save error:", e);
-                setStatus('Save failed. Try again.', 'error');
+            // Try Firebase on top
+            if (firebaseAvailable && currentUID) {
+                try {
+                    await firebaseSaveEntry(todayKey, entry);
+                    setStatus('Saved to cloud!', 'saved');
+                } catch (e) {
+                    console.error("Firebase save failed:", e);
+                    setStatus('Saved locally (cloud unavailable).', 'saved');
+                }
+            } else {
+                setStatus('Saved locally.', 'saved');
             }
 
             saveBtn.disabled = false;
-        }
-
-        // --- LOAD ALL HISTORY FROM FIREBASE ---
-        async function loadHistory() {
-            if (!currentUID) return;
-
-            try {
-                const snapshot = await getDocs(collection(db, "users", currentUID, "journals"));
-                const entries = [];
-                snapshot.forEach(d => entries.push({ date: d.id, data: d.data() }));
-                renderHistory(entries);
-            } catch (e) {
-                console.error("History load error:", e);
-            }
-        }
-
-        // --- DELETE ENTRY ---
-        async function deleteEntry(dateKey, btn) {
-            if (!confirm('Delete this entry?')) return;
-            if (!currentUID) return;
-
-            btn.textContent = '...';
-            btn.disabled = true;
-
-            try {
-                await deleteDoc(doc(db, "users", currentUID, "journals", dateKey));
-                await loadHistory();
-            } catch (e) {
-                console.error("Delete error:", e);
-                btn.textContent = 'Delete';
-                btn.disabled = false;
-            }
-        }
-
-        // --- RENDER HISTORY ---
-        function renderHistory(entries) {
-            entries.sort((a, b) => new Date(b.date) - new Date(a.date));
-            const todayKey = getTodayKey();
-            historyList.innerHTML = '';
-
-            if (entries.length === 0) {
-                historyList.innerHTML = '<p style="text-align:center;color:#999;">No saved entries yet</p>';
-                return;
-            }
-
-            entries.forEach(entry => {
-                const div = document.createElement('div');
-                div.className = 'history-entry' + (entry.date === todayKey ? ' current-entry' : '');
-
-                const delBtn = document.createElement('button');
-                delBtn.className = 'delete-btn';
-                delBtn.textContent = 'Delete';
-                delBtn.addEventListener('click', () => deleteEntry(entry.date, delBtn));
-
-                let html = `<div class="history-date">${formatDate(entry.date)}${entry.date === todayKey ? ' (Today)' : ''}</div>`;
-
-                const d = entry.data;
-
-                if (d.grateful1 || d.grateful2 || d.grateful3) {
-                    html += `<div class="history-section">
-                        <div class="history-section-title">Grateful for:</div>
-                        <div class="history-section-content">${[d.grateful1, d.grateful2, d.grateful3].filter(x => x).join(' • ')}</div>
-                    </div>`;
-                }
-                if (d.great1 || d.great2 || d.great3) {
-                    html += `<div class="history-section">
-                        <div class="history-section-title">What would make today great:</div>
-                        <div class="history-section-content">${[d.great1, d.great2, d.great3].filter(x => x).join(' • ')}</div>
-                    </div>`;
-                }
-                if (d.affirmations) {
-                    html += `<div class="history-section">
-                        <div class="history-section-title">Daily affirmations, I am...</div>
-                        <div class="history-section-content">${d.affirmations}</div>
-                    </div>`;
-                }
-                if (d.amazing1 || d.amazing2 || d.amazing3) {
-                    html += `<div class="history-section">
-                        <div class="history-section-title">Amazing things:</div>
-                        <div class="history-section-content">${[d.amazing1, d.amazing2, d.amazing3].filter(x => x).join(' • ')}</div>
-                    </div>`;
-                }
-                if (d.better) {
-                    html += `<div class="history-section">
-                        <div class="history-section-title">How to make it better:</div>
-                        <div class="history-section-content">${d.better}</div>
-                    </div>`;
-                }
-
-                div.appendChild(delBtn);
-                div.insertAdjacentHTML('beforeend', html);
-                historyList.appendChild(div);
-            });
-        }
-
-        // --- DOWNLOAD .TXT ---
-        function downloadEntry() {
-            const todayKey = getTodayKey();
-            const e = getEntryFromFields();
-
-            const hasContent = Object.values(e).some(v => v.trim() !== '');
-            if (!hasContent) {
-                setStatus('Nothing to download — write something first!', 'error');
-                return;
-            }
-
-            let c = `Gratitude Journal - ${formatDate(todayKey)}\n${'='.repeat(50)}\n\n`;
-            c += `MORNING\n${'─'.repeat(50)}\n\n`;
-            c += `What am I grateful for today?\n`;
-            if (e.grateful1) c += `1. ${e.grateful1}\n`;
-            if (e.grateful2) c += `2. ${e.grateful2}\n`;
-            if (e.grateful3) c += `3. ${e.grateful3}\n`;
-            c += `\nWhat would make today great?\n`;
-            if (e.great1) c += `1. ${e.great1}\n`;
-            if (e.great2) c += `2. ${e.great2}\n`;
-            if (e.great3) c += `3. ${e.great3}\n`;
-            c += `\nDaily affirmations, I am...\n`;
-            if (e.affirmations) c += `${e.affirmations}\n`;
-            c += `\nEVENING\n${'─'.repeat(50)}\n\n`;
-            c += `Three amazing things that happened today\n`;
-            if (e.amazing1) c += `1. ${e.amazing1}\n`;
-            if (e.amazing2) c += `2. ${e.amazing2}\n`;
-            if (e.amazing3) c += `3. ${e.amazing3}\n`;
-            c += `\nHow could I have made today better?\n`;
-            if (e.better) c += `${e.better}\n`;
-
-            const blob = new Blob([c], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `gratitude-journal-${todayKey}.txt`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-
-        // --- BUTTON LISTENERS ---
-        saveBtn.addEventListener('click', saveEntry);
-        downloadBtn.addEventListener('click', downloadEntry);
-
-        // --- FIREBASE AUTH + INIT ---
-        signInAnonymously(auth).catch(console.error);
-
-        onAuthStateChanged(auth, async (user) => {
-            if (!user) {
-                setStatus('Connection lost. Please refresh.', 'error');
-                return;
-            }
-
-            currentUID = user.uid;
-            setStatus('Connected.', 'saved');
-
-            await loadTodayEntry();
             await loadHistory();
-        });
-    </script>
-</body>
-</html>
+        }
+
+        // --- UNIFIED LOAD TODAY ---
+        async function loadTodayEntry() {
+            const todayKey = getTodayKey();
+            let entry = null;
+
+            // Try Firebase first
+            if (firebaseAvailable && currentUID) {
+                try {
+                    entry = await firebaseLoadEntry(todayKey);
+                    if (entry) {
+                        // Sync to localStorage
+                        localSaveEntry(todayKey, entry);
+                    }
+                } catch (e) {
+                    console.error("Firebase load failed:", e);
+                }
+            }
+
+            // Fall back to localStorage
+            if (!entry) {
+                entry = localLoadEntry(todayKey);
+            }
+
+            if (entry) {
+                populateFields(entry);
+            } else {
+                clearFields();
+            }
+        }
+
+        // --- UNIFIED LOAD HISTORY ---
+        async function loadHistory() {
+            let entries = [];
+
+            // Try Firebase first
+            if (firebaseAvailable && currentUID) {
+                try {
+                    entries = await firebaseLoadAllEntries();
+                    // Sync all to localStorage
+                    entries.forEach(e => localSaveEntry(e.date, e.data));
