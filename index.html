@@ -240,8 +240,8 @@
         <div class="date" id="currentDate"></div>
         <h1>Gratitude Journal</h1>
 
-        <div class="quote-section" id="quoteSection">
-            <div class="quote-text" id="quoteText">Loading...</div>
+        <div class="quote-section">
+            <div class="quote-text" id="quoteText"></div>
             <div class="quote-author" id="quoteAuthor"></div>
         </div>
 
@@ -311,7 +311,7 @@
             </div>
         </div>
 
-        <button class="save-btn" onclick="downloadEntry()">Save Today's Entry</button>
+        <button class="save-btn" onclick="handleSave()">Save Today's Entry</button>
 
         <div class="history">
             <h2>Saved Entries</h2>
@@ -319,8 +319,30 @@
         </div>
     </div>
 
-    <script>
-        // Quote repository - 50 quotes
+    <!-- Firebase + All App Logic in one module script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
+
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAaYglOUjlVCcofsgYKukPnFiA-U5gIAgA",
+            authDomain: "gratitude-journal-db37e.firebaseapp.com",
+            projectId: "gratitude-journal-db37e",
+            storageBucket: "gratitude-journal-db37e.firebasestorage.app",
+            messagingSenderId: "781905444895",
+            appId: "1:781905444895:web:ce58e1466406ee40e8552a",
+            measurementId: "G-BJ7TZ8R2KN"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let currentUID = null;
+
+        // --- QUOTES ---
         const QUOTES = [
             { text: "Gratitude turns what we have into enough.", author: "Aesop" },
             { text: "When I started counting my blessings, my whole life turned around.", author: "Willie Nelson" },
@@ -374,6 +396,7 @@
             { text: "Everything you've ever wanted is on the other side of fear.", author: "George Addair" }
         ];
 
+        // --- FIELDS ---
         const fields = [
             'grateful1', 'grateful2', 'grateful3',
             'great1', 'great2', 'great3',
@@ -382,251 +405,295 @@
             'better'
         ];
 
+        // --- HELPERS ---
         function getTodayKey() {
-            const today = new Date();
-            return today.toISOString().split('T')[0];
+            return new Date().toISOString().split('T')[0];
         }
 
         function formatDate(dateStr) {
             const date = new Date(dateStr + 'T00:00:00');
-            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            return date.toLocaleDateString('en-US', options);
+            return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         }
 
         function displayCurrentDate() {
             document.getElementById('currentDate').textContent = formatDate(getTodayKey());
         }
 
-        function loadDailyQuote() {
-            try {
-                const todayKey = getTodayKey();
-                const cachedQuote = localStorage.getItem(`quote_${todayKey}`);
-                
-                if (cachedQuote) {
-                    const quote = JSON.parse(cachedQuote);
-                    displayQuote(quote);
-                } else {
-                    const randomIndex = Math.floor(Math.random() * QUOTES.length);
-                    const quote = QUOTES[randomIndex];
-                    localStorage.setItem(`quote_${todayKey}`, JSON.stringify(quote));
-                    displayQuote(quote);
-                }
-            } catch (error) {
-                console.error('Error loading quote:', error);
-                displayQuote({ text: "Gratitude turns what we have into enough.", author: "Aesop" });
-            }
-        }
-
         function displayQuote(quote) {
-            const quoteTextEl = document.getElementById('quoteText');
-            const quoteAuthorEl = document.getElementById('quoteAuthor');
-            
-            if (quoteTextEl && quoteAuthorEl) {
-                quoteTextEl.textContent = quote.text;
-                quoteAuthorEl.textContent = quote.author;
-            }
+            document.getElementById('quoteText').textContent = quote.text;
+            document.getElementById('quoteAuthor').textContent = quote.author;
         }
 
-        function saveEntry() {
-            const todayKey = getTodayKey();
+        function getEntryFromFields() {
             const entry = {};
-            
-            fields.forEach(field => {
-                const element = document.getElementById(field);
-                if (element) {
-                    entry[field] = element.value;
-                }
+            fields.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) entry[id] = el.value;
             });
-
-            localStorage.setItem(`journal_${todayKey}`, JSON.stringify(entry));
+            return entry;
         }
 
-        function loadTodayEntry() {
+        function populateFields(entry) {
+            fields.forEach(id => {
+                const el = document.getElementById(id);
+                if (el && entry[id]) el.value = entry[id];
+            });
+        }
+
+        // --- QUOTE LOGIC ---
+        async function loadDailyQuote() {
             const todayKey = getTodayKey();
-            const saved = localStorage.getItem(`journal_${todayKey}`);
-            
-            if (saved) {
-                const entry = JSON.parse(saved);
-                fields.forEach(field => {
-                    const element = document.getElementById(field);
-                    if (element && entry[field]) {
-                        element.value = entry[field];
+
+            // 1. Check localStorage first (fastest)
+            const cached = localStorage.getItem(`quote_${todayKey}`);
+            if (cached) {
+                displayQuote(JSON.parse(cached));
+                return;
+            }
+
+            // 2. Check Firebase
+            if (currentUID) {
+                try {
+                    const snap = await getDoc(doc(db, "users", currentUID, "quotes", todayKey));
+                    if (snap.exists()) {
+                        const quote = snap.data();
+                        localStorage.setItem(`quote_${todayKey}`, JSON.stringify(quote));
+                        displayQuote(quote);
+                        return;
                     }
-                });
+                } catch (e) {
+                    console.error("Quote Firebase load error:", e);
+                }
+            }
+
+            // 3. Pick new random quote
+            const quote = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+            localStorage.setItem(`quote_${todayKey}`, JSON.stringify(quote));
+            displayQuote(quote);
+
+            // 4. Save to Firebase in background
+            if (currentUID) {
+                try {
+                    await setDoc(doc(db, "users", currentUID, "quotes", todayKey), quote);
+                } catch (e) {
+                    console.error("Quote Firebase save error:", e);
+                }
             }
         }
 
-        function loadHistory() {
+        // --- ENTRY LOGIC ---
+        async function saveEntry() {
+            const todayKey = getTodayKey();
+            const entry = getEntryFromFields();
+
+            // Always localStorage
+            localStorage.setItem(`journal_${todayKey}`, JSON.stringify(entry));
+
+            // Firebase
+            if (currentUID) {
+                try {
+                    await setDoc(doc(db, "users", currentUID, "journals", todayKey), entry);
+                } catch (e) {
+                    console.error("Entry Firebase save error:", e);
+                }
+            }
+        }
+
+        async function loadTodayEntry() {
+            const todayKey = getTodayKey();
+
+            // 1. Check Firebase first (most up to date across devices)
+            if (currentUID) {
+                try {
+                    const snap = await getDoc(doc(db, "users", currentUID, "journals", todayKey));
+                    if (snap.exists()) {
+                        const entry = snap.data();
+                        localStorage.setItem(`journal_${todayKey}`, JSON.stringify(entry));
+                        populateFields(entry);
+                        return;
+                    }
+                } catch (e) {
+                    console.error("Entry Firebase load error:", e);
+                }
+            }
+
+            // 2. Fall back to localStorage
+            const saved = localStorage.getItem(`journal_${todayKey}`);
+            if (saved) {
+                populateFields(JSON.parse(saved));
+            }
+        }
+
+        // --- HISTORY LOGIC ---
+        async function loadHistory() {
             const historyList = document.getElementById('historyList');
-            const entries = [];
-            
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key.startsWith('journal_')) {
-                    const date = key.replace('journal_', '');
-                    const data = JSON.parse(localStorage.getItem(key));
-                    entries.push({ date, data });
+            let entries = [];
+
+            // 1. Try Firebase
+            if (currentUID) {
+                try {
+                    const snapshot = await getDocs(collection(db, "users", currentUID, "journals"));
+                    snapshot.forEach(d => entries.push({ date: d.id, data: d.data() }));
+                } catch (e) {
+                    console.error("History Firebase load error:", e);
+                }
+            }
+
+            // 2. Fall back to localStorage
+            if (entries.length === 0) {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith('journal_')) {
+                        entries.push({ date: key.replace('journal_', ''), data: JSON.parse(localStorage.getItem(key)) });
+                    }
                 }
             }
 
             entries.sort((a, b) => new Date(b.date) - new Date(a.date));
-
             const todayKey = getTodayKey();
-
             historyList.innerHTML = '';
-            
+
             if (entries.length === 0) {
-                historyList.innerHTML = '<p style="text-align: center; color: #999;">No saved entries yet</p>';
+                historyList.innerHTML = '<p style="text-align:center;color:#999;">No saved entries yet</p>';
                 return;
             }
-            
+
             entries.forEach(entry => {
-                const entryDiv = document.createElement('div');
-                entryDiv.className = 'history-entry';
-                
-                if (entry.date === todayKey) {
-                    entryDiv.classList.add('current-entry');
-                }
-                
-                let content = `
-                    <button class="delete-btn" onclick="deleteEntry('${entry.date}')">Delete</button>
+                const div = document.createElement('div');
+                div.className = 'history-entry' + (entry.date === todayKey ? ' current-entry' : '');
+
+                let html = `
+                    <button class="delete-btn" id="del-${entry.date}">Delete</button>
                     <div class="history-date">${formatDate(entry.date)}${entry.date === todayKey ? ' (Today)' : ''}</div>
                 `;
 
                 if (entry.data.grateful1 || entry.data.grateful2 || entry.data.grateful3) {
-                    content += `
-                        <div class="history-section">
-                            <div class="history-section-title">Grateful for:</div>
-                            <div class="history-section-content">
-                                ${[entry.data.grateful1, entry.data.grateful2, entry.data.grateful3].filter(x => x).join(' • ')}
-                            </div>
-                        </div>
-                    `;
+                    html += `<div class="history-section">
+                        <div class="history-section-title">Grateful for:</div>
+                        <div class="history-section-content">${[entry.data.grateful1, entry.data.grateful2, entry.data.grateful3].filter(x => x).join(' • ')}</div>
+                    </div>`;
                 }
-
                 if (entry.data.great1 || entry.data.great2 || entry.data.great3) {
-                    content += `
-                        <div class="history-section">
-                            <div class="history-section-title">What would make today great:</div>
-                            <div class="history-section-content">
-                                ${[entry.data.great1, entry.data.great2, entry.data.great3].filter(x => x).join(' • ')}
-                            </div>
-                        </div>
-                    `;
+                    html += `<div class="history-section">
+                        <div class="history-section-title">What would make today great:</div>
+                        <div class="history-section-content">${[entry.data.great1, entry.data.great2, entry.data.great3].filter(x => x).join(' • ')}</div>
+                    </div>`;
                 }
-
                 if (entry.data.affirmations) {
-                    content += `
-                        <div class="history-section">
-                            <div class="history-section-title">Daily affirmations, I am...</div>
-                            <div class="history-section-content">${entry.data.affirmations}</div>
-                        </div>
-                    `;
+                    html += `<div class="history-section">
+                        <div class="history-section-title">Daily affirmations, I am...</div>
+                        <div class="history-section-content">${entry.data.affirmations}</div>
+                    </div>`;
                 }
-
                 if (entry.data.amazing1 || entry.data.amazing2 || entry.data.amazing3) {
-                    content += `
-                        <div class="history-section">
-                            <div class="history-section-title">Amazing things:</div>
-                            <div class="history-section-content">
-                                ${[entry.data.amazing1, entry.data.amazing2, entry.data.amazing3].filter(x => x).join(' • ')}
-                            </div>
-                        </div>
-                    `;
+                    html += `<div class="history-section">
+                        <div class="history-section-title">Amazing things:</div>
+                        <div class="history-section-content">${[entry.data.amazing1, entry.data.amazing2, entry.data.amazing3].filter(x => x).join(' • ')}</div>
+                    </div>`;
                 }
-
                 if (entry.data.better) {
-                    content += `
-                        <div class="history-section">
-                            <div class="history-section-title">How to make it better:</div>
-                            <div class="history-section-content">${entry.data.better}</div>
-                        </div>
-                    `;
+                    html += `<div class="history-section">
+                        <div class="history-section-title">How to make it better:</div>
+                        <div class="history-section-content">${entry.data.better}</div>
+                    </div>`;
                 }
 
-                entryDiv.innerHTML = content;
-                historyList.appendChild(entryDiv);
+                div.innerHTML = html;
+                historyList.appendChild(div);
+
+                // Attach delete listener via ID
+                div.querySelector(`#del-${entry.date}`).addEventListener('click', () => deleteEntry(entry.date));
             });
         }
 
-        function deleteEntry(date) {
-            if (confirm('Delete this entry?')) {
-                localStorage.removeItem(`journal_${date}`);
-                loadHistory();
+        async function deleteEntry(date) {
+            if (!confirm('Delete this entry?')) return;
+
+            localStorage.removeItem(`journal_${date}`);
+
+            if (currentUID) {
+                try {
+                    await deleteDoc(doc(db, "users", currentUID, "journals", date));
+                } catch (e) {
+                    console.error("Delete Firebase error:", e);
+                }
             }
+
+            loadHistory();
         }
 
+        // --- DOWNLOAD LOGIC ---
         function downloadEntry() {
             const todayKey = getTodayKey();
             const saved = localStorage.getItem(`journal_${todayKey}`);
-            
-            if (!saved) {
-                alert('No entry for today to save!');
-                return;
-            }
+            if (!saved) { alert('No entry for today to save!'); return; }
 
-            const entry = JSON.parse(saved);
-            
-            let content = `Gratitude Journal - ${formatDate(todayKey)}\n`;
-            content += `${'='.repeat(50)}\n\n`;
-            
-            content += `MORNING\n`;
-            content += `${'─'.repeat(50)}\n\n`;
-            
-            content += `What am I grateful for today?\n`;
-            if (entry.grateful1) content += `1. ${entry.grateful1}\n`;
-            if (entry.grateful2) content += `2. ${entry.grateful2}\n`;
-            if (entry.grateful3) content += `3. ${entry.grateful3}\n`;
-            content += `\n`;
-            
-            content += `What would make today great?\n`;
-            if (entry.great1) content += `1. ${entry.great1}\n`;
-            if (entry.great2) content += `2. ${entry.great2}\n`;
-            if (entry.great3) content += `3. ${entry.great3}\n`;
-            content += `\n`;
-            
-            content += `Daily affirmations, I am...\n`;
-            if (entry.affirmations) content += `${entry.affirmations}\n`;
-            content += `\n`;
-            
-            content += `EVENING\n`;
-            content += `${'─'.repeat(50)}\n\n`;
-            
-            content += `Three amazing things that happened today\n`;
-            if (entry.amazing1) content += `1. ${entry.amazing1}\n`;
-            if (entry.amazing2) content += `2. ${entry.amazing2}\n`;
-            if (entry.amazing3) content += `3. ${entry.amazing3}\n`;
-            content += `\n`;
-            
-            content += `How could I have made today better?\n`;
-            if (entry.better) content += `${entry.better}\n`;
+            const e = JSON.parse(saved);
+            let c = `Gratitude Journal - ${formatDate(todayKey)}\n${'='.repeat(50)}\n\n`;
+            c += `MORNING\n${'─'.repeat(50)}\n\n`;
+            c += `What am I grateful for today?\n`;
+            if (e.grateful1) c += `1. ${e.grateful1}\n`;
+            if (e.grateful2) c += `2. ${e.grateful2}\n`;
+            if (e.grateful3) c += `3. ${e.grateful3}\n\n`;
+            c += `What would make today great?\n`;
+            if (e.great1) c += `1. ${e.great1}\n`;
+            if (e.great2) c += `2. ${e.great2}\n`;
+            if (e.great3) c += `3. ${e.great3}\n\n`;
+            c += `Daily affirmations, I am...\n`;
+            if (e.affirmations) c += `${e.affirmations}\n\n`;
+            c += `EVENING\n${'─'.repeat(50)}\n\n`;
+            c += `Three amazing things that happened today\n`;
+            if (e.amazing1) c += `1. ${e.amazing1}\n`;
+            if (e.amazing2) c += `2. ${e.amazing2}\n`;
+            if (e.amazing3) c += `3. ${e.amazing3}\n\n`;
+            c += `How could I have made today better?\n`;
+            if (e.better) c += `${e.better}\n`;
 
-            const blob = new Blob([content], { type: 'text/plain' });
+            const blob = new Blob([c], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `GratitudeJournalEntries/gratitude-journal-${todayKey}.txt`;
+            a.download = `gratitude-journal-${todayKey}.txt`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            
+
             loadHistory();
         }
 
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            displayCurrentDate();
-            loadDailyQuote();
-            loadTodayEntry();
-            loadHistory();
-            
-            fields.forEach(field => {
-                const element = document.getElementById(field);
-                if (element) {
-                    element.addEventListener('input', saveEntry);
-                }
-            });
+        // --- SAVE BUTTON (exposed to global so onclick in HTML works) ---
+        async function handleSave() {
+            await saveEntry();
+            downloadEntry();
+        }
+        window.handleSave = handleSave;
+
+        // --- INIT ---
+        displayCurrentDate();
+
+        // Load quote immediately from localStorage (no wait)
+        loadDailyQuote();
+
+        // Attach input listeners
+        fields.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', saveEntry);
+        });
+
+        // Firebase auth
+        signInAnonymously(auth).catch(console.error);
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUID = user.uid;
+                console.log("Signed in:", currentUID);
+
+                // Re-run loads now that Firebase is available
+                await loadDailyQuote();
+                await loadTodayEntry();
+                await loadHistory();
+            }
         });
     </script>
 </body>
